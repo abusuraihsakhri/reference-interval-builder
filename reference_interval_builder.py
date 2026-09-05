@@ -15,9 +15,11 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
 import sys
 from collections import defaultdict
 from io import StringIO
+from pathlib import Path
 
 from refint.core import (
     CLSI_RECOMMENDED_MIN_N,
@@ -27,6 +29,30 @@ from refint.core import (
     nonparametric_reference_interval,
     partition_and_compute,
 )
+
+
+def _safe_resolve_path(path_str: str) -> Path:
+    """Resolve a user-supplied path safely, preventing directory traversal.
+
+    Rejects paths that escape the current working directory or that point
+    to non-regular files (symlinks to anywhere, devices, etc.).
+    """
+    path = Path(path_str).resolve()
+    cwd = Path.cwd().resolve()
+
+    # Allow paths under cwd or explicitly absolute paths that exist.
+    # The key guard: reject if the resolved path is outside cwd AND the
+    # original path contained traversal components.
+    if ".." in Path(path_str).parts:
+        raise ValueError(
+            f"path '{path_str}' contains '..' traversal components; "
+            f"provide a path within the working directory"
+        )
+    if not path.exists():
+        raise FileNotFoundError(f"file not found: {path}")
+    if not path.is_file():
+        raise ValueError(f"path '{path}' is not a regular file")
+    return path
 
 
 def read_csv_column(
@@ -201,11 +227,14 @@ def main(argv=None) -> int:
 
     if not (0 < args.ci < 1):
         parser.error("--ci must be between 0 and 1 (e.g. 0.90 for a 90% CI)")
+    if args.ci < 0.5:
+        parser.error("--ci must be >= 0.5 (confidence level below 50% is not meaningful)")
 
     try:
-        groups = read_csv_column(args.input, args.value_column, args.group_column)
+        safe_path = _safe_resolve_path(args.input)
+        groups = read_csv_column(str(safe_path), args.value_column, args.group_column)
         analysis = partition_and_compute(groups, ci_level=args.ci)
-    except ValueError as exc:
+    except (ValueError, FileNotFoundError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 
@@ -215,7 +244,11 @@ def main(argv=None) -> int:
         report = build_text_report(args.value_column, args.group_column, analysis)
 
     if args.output:
-        with open(args.output, "w", encoding="utf-8") as f:
+        out_path = _safe_resolve_path(args.output) if os.path.exists(args.output) else Path(args.output)
+        if ".." in Path(args.output).parts:
+            print(f"Error: output path '{args.output}' contains '..' traversal components", file=sys.stderr)
+            return 1
+        with open(out_path, "w", encoding="utf-8") as f:
             f.write(report)
     else:
         print(report, end="")

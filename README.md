@@ -1,7 +1,7 @@
 # Reference Interval Builder
 
-> **Domain:** Clinical Decision Support & Biomedical Computing  
-> **Reference Guidelines & Standards:** `Standard Clinical Formulations & ISO/IEC Quality Frameworks`
+> **Domain:** Clinical Decision Support & Biomedical Computing
+> **Reference Guidelines & Standards:** CLSI EP28-A3c, ISO/IEC Quality Frameworks
 
 <div align="center">
 
@@ -18,95 +18,122 @@
 
 ## 📖 What It Does
 
-Reference Interval Builder -- CLSI EP28-A3c nonparametric CLI.
+Reference Interval Builder computes clinical reference intervals from a sample of healthy-subject lab results using the CLSI EP28-A3c nonparametric percentile method, with Tukey outlier exclusion, rank-based confidence intervals, and the Harris-Boyd test for whether age/sex partitioning is statistically warranted.
 
-Computes clinical reference intervals from a sample of healthy-subject lab
-results using the CLSI EP28-A3c nonparametric percentile method, with Tukey
-outlier exclusion, rank-based confidence intervals, and the Harris-Boyd test
-for whether age/sex partitioning is statistically warranted.
+### Quick Start
 
-Example:
-    python reference_interval_builder.py --input sample_data.csv         --value-column glucose --group-column sex --ci 0.90
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run with sample data
+python reference_interval_builder.py --input sample_data.csv \
+    --value-column glucose --group-column sex --ci 0.90
+```
 
 ---
 
 ## ⚙️ Key Capabilities & Algorithmic Modules
 
-### 🔬 Analytical Functions
+### Core Statistics (`refint/core.py`)
 
-- **`read_csv_column()`**: Read a CSV file and return {group_label: [values]}.
+- **Tukey's Outlier Exclusion**: Flags and removes outliers using the 1.5 x IQR fence method before computing reference intervals.
+- **CLSI EP28-A3c Nonparametric Percentile Method**: Computes the 2.5th and 97.5th percentile reference limits using rank-based interpolation.
+- **Rank-Based Confidence Intervals**: Nonparametric confidence intervals around reference limits using the normal approximation to the binomial distribution.
+- **Harris-Boyd Partitioning Test**: Determines whether two candidate subgroups (e.g., male/female) should be reported as separate reference intervals.
 
-If group_column is None, every row is placed under the single key
-"overall". Rows with a non-numeric or missing value are skipped.
-- **`build_text_report()`** — calculates and validates build_text_report parameters.
-- **`build_csv_report()`** — calculates and validates build_csv_report parameters.
-- **`main()`** — calculates and validates main parameters.
+### CLI Interface (`reference_interval_builder.py`)
+
+- **`read_csv_column()`**: Read a CSV file and return `{group_label: [values]}`.
+- **`build_text_report()`**: Generate a human-readable text report.
+- **`build_csv_report()`**: Generate a machine-readable CSV report.
+- **`main()`**: CLI entry point with argument parsing.
+
+### Enterprise Agent System (`agents/`)
+
+- **Multi-Worker Evaluation**: InvariantQCWorker, SafetyEscalationWorker, ProtocolConformanceWorker.
+- **Zero-PHI Outbound Interceptor**: AST and regex inspection blocking SSNs, MRNs, phone numbers, and patient identifiers.
+- **HMAC-SHA256 Audit Trail**: Chained, cryptographically signed logs for every evaluation.
+- **FastAPI REST Server**: OpenAPI 3.1 REST endpoints with Prometheus metrics.
 
 ---
 
-## 📐 Mathematical Formulation & Logic
+## 💻 CLI Usage
 
-```text
-  return (
+### Reference Interval Builder (Core)
+
+```bash
+# Basic usage
+python reference_interval_builder.py --input sample_data.csv \
+    --value-column glucose --group-column sex --ci 0.90
+
+# Output as CSV
+python reference_interval_builder.py --input sample_data.csv \
+    --value-column glucose --format csv --output report.csv
+
+# Without grouping
+python reference_interval_builder.py --input sample_data.csv \
+    --value-column glucose --ci 0.95
+```
+
+### Parameters
+
+| Parameter | Description | Default |
+|:----------|:------------|:--------|
+| `--input` | Path to CSV file of lab results | Required |
+| `--value-column` | Name of the CSV column holding lab values | Required |
+| `--group-column` | Optional CSV column (e.g., sex, age_group) for subgroup partitioning | None |
+| `--ci` | Confidence level for reference limit CIs (0.5-1.0) | 0.90 |
+| `--format` | Report output format (`text` or `csv`) | text |
+| `--output` | Write report to file instead of stdout | None |
+
+### Enterprise CLI (`cli.py`)
+
+```bash
+# Run audit
+python cli.py audit --task-id TASK-001 --primary 28.5 --secondary 14.2
+
+# Batch processing
+python cli.py batch -i input.csv -o results.csv
+
+# Verify audit trail
+python cli.py verify-audit
+
+# Launch API server
+python cli.py serve --host 127.0.0.1 --port 8000
 ```
 
 ---
 
-## 💻 CLI Quickstart & Usage
+## 🛡️ Security Architecture
 
-### 1. Guided Interactive Mode
-```bash
-python cli.py
-```
+* **Zero-PHI Outbound Interceptor:** Active AST and regex inspection blocking SSNs, MRNs, phone numbers, and patient identifiers. Error messages do not leak regex patterns.
+* **Tamper-Evident HMAC-SHA256 Audit Trail:** Chained, cryptographically signed logs for every evaluation. Requires `AUDIT_SECRET_KEY` environment variable.
+* **Path Traversal Protection:** All user-supplied file paths are validated to prevent directory traversal attacks.
+* **Input Validation:** CI levels, file paths, and data columns are validated before processing.
 
-### 2. Direct Parameterized Evaluation
-```bash
-python cli.py --task-id <value> --target <value> --primary <value> --secondary <value>
-```
+### Environment Variables
 
-### Parameter Reference
-- `--task-id`: Specifies input measurement or parameter value.
-- `--target`: Specifies input measurement or parameter value.
-- `--primary`: Specifies input measurement or parameter value.
-- `--secondary`: Specifies input measurement or parameter value.
-- `--critical`: Specifies input measurement or parameter value.
-- `--status`: Specifies input measurement or parameter value.
-- `--input`: Specifies input measurement or parameter value.
-- `--output`: Specifies input measurement or parameter value.
-
-### Input Data Schema
-
-| Field | Description | Requirement |
-|:------|:------------|:------------|
-| `suite_name` | Parameter / observation metric | Required |
-| `system_slug` | Parameter / observation metric | Required |
-| `standard_reference` | Parameter / observation metric | Required |
-| `test_cases` | Parameter / observation metric | Required |
+| Variable | Description | Required |
+|:---------|:------------|:---------|
+| `AUDIT_SECRET_KEY` | HMAC-SHA256 secret key for audit trail | Yes |
+| `MODEL_PROVIDER` | LLM provider (mock, ollama, claude, openai) | No (default: mock) |
 
 ---
 
-## 🛡️ Security & Enterprise Architecture
-
-* **Zero-PHI Outbound Interceptor:** Active AST and regex inspection blocking SSNs, MRNs, phone numbers, and patient identifiers.
-* **Tamper-Evident HMAC-SHA256 Audit Trail:** Chained, cryptographically signed logs for every evaluation and state transition.
-* **Air-Gapped LLM Reasoning Adapter:** Agnostic integration for local Ollama instances (`llama3`, `mistral`), Claude 3.5 Sonnet, GPT-4o, and deterministic test mocks.
-* **Active Learning Bayesian Calibration:** Dynamic tracker updating worker reliability weights and monitoring Brier calibration drift.
-* **FastAPI & Prometheus Telemetry:** Exposes OpenAPI 3.1 REST endpoints and operational Prometheus metrics (`/metrics`).
-
----
-
-## 🧪 Testing & Verification
-
-Run the automated test suite:
+## 🧪 Testing
 
 ```bash
+# Run all tests
 pytest -v
-```
 
-Execute high-throughput batch simulation benchmarks:
+# Run specific test files
+pytest test_refint.py -v          # Core statistics tests
+pytest test_security.py -v        # Security feature tests
+pytest tests/ -v                  # Integration tests
 
-```bash
-python simulator.py --tasks 1000 --concurrency 8
+# Run with coverage
+pytest --cov=refint --cov=agents -v
 ```
 
 ---
@@ -114,6 +141,83 @@ python simulator.py --tasks 1000 --concurrency 8
 ## 🐳 Container Deployment
 
 ```bash
+# Build and run with Docker
 docker build -t reference-interval-builder .
-docker run -p 8000:8000 reference-interval-builder
+docker run -e AUDIT_SECRET_KEY=your-secret-key -p 8000:8000 reference-interval-builder
+
+# Or use docker-compose
+cp .env.example .env
+# Edit .env to set AUDIT_SECRET_KEY
+docker-compose up -d
 ```
+
+---
+
+## 📁 Project Structure
+
+```
+reference-interval-builder/
+├── refint/                    # Core statistics module
+│   ├── __init__.py
+│   └── core.py               # CLSI EP28-A3c implementation
+├── agents/                    # Enterprise agent system
+│   ├── __init__.py
+│   ├── api.py                # FastAPI REST server
+│   ├── base.py               # PHI guard, audit trail
+│   ├── models.py             # Pydantic schemas
+│   ├── supervisor.py         # Multi-worker orchestrator
+│   ├── workers.py            # Specialized evaluation workers
+│   ├── llm_factory.py        # LLM provider factory
+│   ├── learning.py           # Bayesian calibration engine
+│   ├── metrics.py            # Prometheus metrics
+│   └── streamer.py           # WebSocket telemetry
+├── tests/                     # Integration tests
+│   ├── test_enrichment.py
+│   └── test_reference_interval_builder.py
+├── web/                       # Operations console
+│   └── index.html
+├── reference_interval_builder.py  # Core CLI entry point
+├── cli.py                     # Enterprise CLI entry point
+├── enrichment.py              # Enrichment feature engines
+├── simulator.py               # High-throughput simulation
+├── sample_data.csv            # Sample lab data
+├── requirements.txt           # Python dependencies
+├── Dockerfile                 # Container build
+├── docker-compose.yml         # Container orchestration
+├── .env.example               # Environment template
+├── .gitignore                 # Git ignore rules
+└── LICENSE                    # MIT License
+```
+
+---
+
+## 📐 Mathematical Formulation
+
+### Reference Interval (CLSI EP28-A3c)
+
+```
+Lower limit = 2.5th percentile (rank = 0.025 × (n + 1))
+Upper limit = 97.5th percentile (rank = 0.975 × (n + 1))
+```
+
+### Tukey's Outlier Method
+
+```
+IQR = Q3 - Q1
+Lower fence = Q1 - 1.5 × IQR
+Upper fence = Q3 + 1.5 × IQR
+Values outside fences are excluded
+```
+
+### Harris-Boyd Partitioning Test
+
+```
+z = |mean_a - mean_b| / sqrt(var_a/n_a + var_b/n_b)
+Partition recommended if z > z_critical(n*)
+```
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

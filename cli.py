@@ -4,12 +4,26 @@ Command Line Interface for Reference Interval Builder.
 import argparse
 import csv
 import json
+import os
 import sys
+from pathlib import Path
 from agents.models import SystemTaskPayload
 from agents.supervisor import SystemSupervisor
-from agents.base import AuditLogger
+from agents.base import AuditLogger, SecurityException
 
 supervisor = SystemSupervisor(model_provider="mock")
+
+
+def _safe_input_path(path_str: str) -> Path:
+    """Validate input file path, preventing directory traversal."""
+    if ".." in Path(path_str).parts:
+        raise ValueError(f"path '{path_str}' contains '..' traversal components")
+    path = Path(path_str)
+    if not path.exists():
+        raise FileNotFoundError(f"file not found: {path}")
+    if not path.is_file():
+        raise ValueError(f"path '{path}' is not a regular file")
+    return path
 
 
 def main(argv=None):
@@ -80,7 +94,12 @@ def main(argv=None):
         return 0
 
     if args.command == "batch":
-        with open(args.input, mode="r", encoding="utf-8-sig") as f:
+        try:
+            safe_path = _safe_input_path(args.input)
+        except (ValueError, FileNotFoundError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
+        with open(safe_path, mode="r", encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)
             fieldnames = list(reader.fieldnames or [])
             rows = list(reader)
