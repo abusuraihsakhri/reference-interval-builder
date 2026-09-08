@@ -102,21 +102,29 @@ class AuditTrail:
         return self.logs
 
 
-GLOBAL_AUDIT = AuditTrail()
+GLOBAL_AUDIT: Optional[AuditTrail] = None
+
+
+def get_global_audit() -> AuditTrail:
+    """Lazily initialize the global audit trail, requiring AUDIT_SECRET_KEY."""
+    global GLOBAL_AUDIT
+    if GLOBAL_AUDIT is None:
+        GLOBAL_AUDIT = AuditTrail()
+    return GLOBAL_AUDIT
 
 
 class AuditLogger:
     @staticmethod
     def log(actor: str, actor_tier: str, event_type: str, details: Dict[str, Any]) -> Dict[str, Any]:
-        return GLOBAL_AUDIT.log(actor, actor_tier, event_type, details)
+        return get_global_audit().log(actor, actor_tier, event_type, details)
 
     @staticmethod
     def get_trail() -> List[Dict[str, Any]]:
-        return GLOBAL_AUDIT.get_trail()
+        return get_global_audit().get_trail()
 
     @staticmethod
     def verify_integrity() -> bool:
-        return GLOBAL_AUDIT.verify_integrity()
+        return get_global_audit().verify_integrity()
 
 
 class ActionExecutor:
