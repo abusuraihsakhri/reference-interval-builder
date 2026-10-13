@@ -154,7 +154,8 @@ function csvEscape(s) {
 }
 function safeSpreadsheetLabel(label) {
   // Stop untrusted group labels from becoming formulas in spreadsheet software.
-  return /^[=+\\-@\\t\\r]/.test(label) ? "'" + label : label;
+  const unsafe = /^[=+@-]/.test(label) || label.startsWith(String.fromCharCode(9)) || label.startsWith(String.fromCharCode(13));
+  return unsafe ? "'" + label : label;
 }
 function exportCSV(analysis) {
   const head = ["group","n_total","n_used","n_outliers_excluded","lower_limit","upper_limit",
