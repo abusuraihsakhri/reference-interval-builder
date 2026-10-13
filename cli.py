@@ -19,6 +19,8 @@ def _safe_input_path(path_str: str) -> Path:
     if ".." in Path(path_str).parts:
         raise ValueError(f"path '{path_str}' contains '..' traversal components")
     path = Path(path_str)
+    if path.is_symlink():
+        raise ValueError("symlinked input files are not permitted")
     if not path.exists():
         raise FileNotFoundError(f"file not found: {path}")
     if not path.is_file():
@@ -113,7 +115,7 @@ def main(argv=None):
                 primary_metric=float(r.get("primary_metric", 15.0)),
                 secondary_metric=float(r.get("secondary_metric", 5.0)),
                 status_descriptor=r.get("status_descriptor", "NOMINAL"),
-                is_critical_flag=bool(r.get("is_critical_flag", False)),
+                is_critical_flag=str(r.get("is_critical_flag", "false")).strip().lower() in {"true", "1", "yes"},
             )
             dossier = supervisor.process_task(payload)
             row_dict = dict(r)
