@@ -6,7 +6,7 @@ Standard: CAP / CLSI / ISO Standards
 import datetime
 from enum import Enum
 from typing import Dict, Any, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, FiniteFloat
 
 
 class UrgencyLevel(str, Enum):
@@ -24,8 +24,8 @@ class SystemIntegrityStatus(str, Enum):
 class SystemTaskPayload(BaseModel):
     task_id: str = Field(..., description="Unique task / case identifier")
     target_identifier: str = Field(..., description="Entity, patient key, or genomic/cryptographic target")
-    primary_metric: float = Field(..., description="Primary domain measurement or score")
-    secondary_metric: float = Field(default=0.0, description="Secondary kinetic or confidence score")
+    primary_metric: FiniteFloat = Field(..., description="Primary domain measurement or score")
+    secondary_metric: FiniteFloat = Field(default=0.0, description="Secondary kinetic or confidence score")
     status_descriptor: str = Field(default="NOMINAL", description="Status code or phenotype descriptor")
     is_critical_flag: bool = Field(default=False, description="Emergency escalation or high priority trigger")
     attributes: Dict[str, Any] = Field(default_factory=dict, description="Metadata key-value pairs")
