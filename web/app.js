@@ -152,11 +152,15 @@ function csvEscape(s) {
   const text = String(s);
   return /[",\r\n]/.test(text) ? '"' + text.replaceAll('"', '""') + '"' : text;
 }
+function safeSpreadsheetLabel(label) {
+  // Stop untrusted group labels from becoming formulas in spreadsheet software.
+  return /^[=+\\-@\\t\\r]/.test(label) ? "'" + label : label;
+}
 function exportCSV(analysis) {
   const head = ["group","n_total","n_used","n_outliers_excluded","lower_limit","upper_limit",
     "ci_level","lower_ci_low","lower_ci_high","upper_ci_low","upper_ci_high","below_clsi_min_n"];
   const rows = [head, ...[analysis.overall, ...analysis.subgroups].map(ri =>
-    [ri.label,ri.nTotal,ri.nUsed,ri.nOutliers,ri.lower.toFixed(4),ri.upper.toFixed(4),ri.ci,
+    [safeSpreadsheetLabel(ri.label),ri.nTotal,ri.nUsed,ri.nOutliers,ri.lower.toFixed(4),ri.upper.toFixed(4),ri.ci,
      ri.lowerCI[0].toFixed(4),ri.lowerCI[1].toFixed(4),ri.upperCI[0].toFixed(4),
      ri.upperCI[1].toFixed(4),ri.belowMin])];
   return rows.map(r => r.map(csvEscape).join(",")).join("\r\n") + "\r\n";
