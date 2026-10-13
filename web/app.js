@@ -6,6 +6,7 @@ const Z_BY_CI = { "0.8": 1.2816, "0.9": 1.6449, "0.95": 1.96, "0.99": 2.5758 };
 const MIN_N = 120;
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const MAX_ROWS = 50000;
+const MAX_GROUPS = 30;
 
 function finiteValues(values, label = "values") {
   if (!Array.isArray(values) || !values.length ||
@@ -81,6 +82,7 @@ function harrisBoyd(a, b, labelA, labelB) {
 function analyze(groups, ci = 0.9, excludeOutliers = true) {
   const entries = Object.entries(groups);
   if (!entries.length) throw new Error("No usable observations found.");
+  if (entries.length > MAX_GROUPS) throw new Error("Too many groups; choose a categorical partition column (maximum 30).");
   const all = entries.flatMap(([, values]) => values);
   const overall = interval(all, "overall", ci, excludeOutliers);
   const subgroups = entries.map(([name, values]) => interval(values, name, ci, excludeOutliers));
