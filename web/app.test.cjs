@@ -51,3 +51,8 @@ test("export uses stable schema and quotes arbitrary group labels", () => {
   assert.match(csv, /"group,""B"""/);
   assert.equal(csv.trim().split("\r\n").length, 3);
 });
+
+test("group count is bounded for responsive browser execution", () => {
+  const tooMany = Object.fromEntries(Array.from({length:31}, (_, i) => ["g" + i,[1,2]]));
+  assert.throws(() => analyze(tooMany), /Too many groups/);
+});
