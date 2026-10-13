@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import math
 import os
 import sys
 from collections import defaultdict
@@ -37,12 +38,10 @@ def _safe_resolve_path(path_str: str) -> Path:
     Rejects paths that escape the current working directory or that point
     to non-regular files (symlinks to anywhere, devices, etc.).
     """
-    path = Path(path_str).resolve()
-    cwd = Path.cwd().resolve()
-
-    # Allow paths under cwd or explicitly absolute paths that exist.
-    # The key guard: reject if the resolved path is outside cwd AND the
-    # original path contained traversal components.
+    original = Path(path_str)
+    if original.is_symlink():
+        raise ValueError("symlinked input files are not permitted")
+    path = original.resolve()
     if ".." in Path(path_str).parts:
         raise ValueError(
             f"path '{path_str}' contains '..' traversal components; "
@@ -83,6 +82,8 @@ def read_csv_column(
             try:
                 value = float(raw)
             except ValueError:
+                continue
+            if not math.isfinite(value):
                 continue
             label = row.get(group_column, "overall") if group_column else "overall"
             groups[label].append(value)
@@ -225,8 +226,8 @@ def main(argv=None) -> int:
 
     args = parser.parse_args(argv)
 
-    if not (0 < args.ci < 1):
-        parser.error("--ci must be between 0 and 1 (e.g. 0.90 for a 90% CI)")
+    if not math.isfinite(args.ci) or not (0 < args.ci < 1):
+        parser.error("--ci must be finite and between 0 and 1 (e.g. 0.90)")
     if args.ci < 0.5:
         parser.error("--ci must be >= 0.5 (confidence level below 50% is not meaningful)")
 
@@ -244,12 +245,19 @@ def main(argv=None) -> int:
         report = build_text_report(args.value_column, args.group_column, analysis)
 
     if args.output:
-        out_path = _safe_resolve_path(args.output) if os.path.exists(args.output) else Path(args.output)
         if ".." in Path(args.output).parts:
-            print(f"Error: output path '{args.output}' contains '..' traversal components", file=sys.stderr)
+            print("Error: output path contains '..' traversal components", file=sys.stderr)
             return 1
-        with open(out_path, "w", encoding="utf-8") as f:
-            f.write(report)
+        out_path = Path(args.output)
+        if out_path.is_symlink():
+            print("Error: output path must not be a symlink", file=sys.stderr)
+            return 1
+        try:
+            with open(out_path, "w", encoding="utf-8", newline="") as f:
+                f.write(report)
+        except OSError as exc:
+            print(f"Error writing report: {exc}", file=sys.stderr)
+            return 1
     else:
         print(report, end="")
 
