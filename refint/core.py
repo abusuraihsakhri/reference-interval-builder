@@ -27,6 +27,16 @@ from scipy import stats
 
 CLSI_RECOMMENDED_MIN_N = 120
 
+
+def _finite_vector(data: Sequence[float], name: str) -> np.ndarray:
+    """Require a one-dimensional series of finite observations."""
+    arr = np.asarray(data, dtype=float)
+    if arr.ndim != 1:
+        raise ValueError(f"{name} must be a one-dimensional series")
+    if not np.all(np.isfinite(arr)):
+        raise ValueError(f"{name} contains NaN or infinite observations")
+    return arr
+
 # z critical values for a two-sided confidence interval on a percentile rank.
 _Z_FOR_CI = {
     0.80: 1.2816,
@@ -42,6 +52,8 @@ def _z_for_ci_level(ci_level: float) -> float:
     Uses the exact table for the common CLSI levels (90%/95%) and falls
     back to scipy's inverse normal CDF for anything else.
     """
+    if not math.isfinite(ci_level) or not 0.5 <= ci_level < 1.0:
+        raise ValueError("ci_level must be finite and in the range [0.5, 1)")
     if ci_level in _Z_FOR_CI:
         return _Z_FOR_CI[ci_level]
     return float(stats.norm.ppf(0.5 + ci_level / 2.0))
@@ -70,7 +82,9 @@ def tukey_outliers(data: Sequence[float], k: float = 1.5) -> TukeyResult:
     excluded before the reference interval is computed, per CLSI EP28-A3c's
     recommendation to screen for outliers prior to percentile estimation.
     """
-    arr = np.asarray(data, dtype=float)
+    arr = _finite_vector(data, "data")
+    if not math.isfinite(k) or k < 0:
+        raise ValueError("Tukey fence multiplier k must be finite and nonnegative")
     if arr.size == 0:
         raise ValueError("cannot screen an empty sample for outliers")
 
@@ -172,7 +186,8 @@ def nonparametric_reference_interval(
     97.5th percentiles by rank interpolation, then compute a nonparametric
     confidence interval around each limit.
     """
-    arr = np.asarray(data, dtype=float)
+    arr = _finite_vector(data, label)
+    _z_for_ci_level(ci_level)
     if arr.size < 2:
         raise ValueError(f"{label}: need at least 2 observations, got {arr.size}")
 
@@ -277,8 +292,8 @@ def harris_boyd_test(
     separate reference intervals is recommended only when z exceeds the
     critical value for that sample size.
     """
-    a = np.asarray(data_a, dtype=float)
-    b = np.asarray(data_b, dtype=float)
+    a = _finite_vector(data_a, label_a)
+    b = _finite_vector(data_b, label_b)
     n_a, n_b = a.size, b.size
     if n_a < 2 or n_b < 2:
         raise ValueError("Harris-Boyd test requires at least 2 observations per group")
@@ -287,7 +302,9 @@ def harris_boyd_test(
     var_a, var_b = float(np.var(a, ddof=1)), float(np.var(b, ddof=1))
 
     se = math.sqrt(var_a / n_a + var_b / n_b)
-    z = abs(mean_a - mean_b) / se if se > 0 else 0.0
+    z = abs(mean_a - mean_b) / se if se > 0 else (
+        math.inf if mean_a != mean_b else 0.0
+    )
 
     n_star = min(n_a, n_b)
     z_crit = _harris_boyd_critical_z(n_star)
@@ -323,23 +340,27 @@ def partition_and_compute(
 
     `values_by_group` maps group label -> sequence of numeric lab values.
     """
-    all_values = np.concatenate(
-        [np.asarray(v, dtype=float) for v in values_by_group.values()]
-    )
+    if not values_by_group:
+        raise ValueError("at least one group is required")
+    validated = {
+        label: _finite_vector(values, str(label))
+        for label, values in values_by_group.items()
+    }
+    all_values = np.concatenate(list(validated.values()))
     overall = nonparametric_reference_interval(all_values, "overall", ci_level)
 
     subgroups = {
         label: nonparametric_reference_interval(vals, label, ci_level)
-        for label, vals in values_by_group.items()
+        for label, vals in validated.items()
     }
 
-    labels = list(values_by_group.keys())
+    labels = list(validated.keys())
     pairs = []
     for i in range(len(labels)):
         for j in range(i + 1, len(labels)):
             la, lb = labels[i], labels[j]
             pairs.append(
-                harris_boyd_test(values_by_group[la], values_by_group[lb], la, lb)
+                harris_boyd_test(validated[la], validated[lb], la, lb)
             )
 
     return PartitionAnalysis(overall=overall, subgroups=subgroups, harris_boyd_pairs=pairs)
