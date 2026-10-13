@@ -77,3 +77,21 @@ def test_agent_batch_false_flag_is_not_treated_as_true(tmp_path):
         rows = list(csv.DictReader(stream))
     assert rows[0]["overall_urgency"] == "ROUTINE"
     assert rows[1]["overall_urgency"] == "CRITICAL_STAT_PANIC"
+
+def test_audit_api_payload_rejects_nonfinite_measurements():
+    from pydantic import ValidationError
+    from agents.models import SystemTaskPayload
+    with pytest.raises(ValidationError):
+        SystemTaskPayload(task_id="TASK", target_identifier="KEY", primary_metric=math.nan)
+
+
+def test_agent_rejects_phi_in_metadata():
+    from agents.base import SecurityException
+    from agents.models import SystemTaskPayload
+    from agents.supervisor import SystemSupervisor
+    payload = SystemTaskPayload(
+        task_id="TASK", target_identifier="KEY", primary_metric=12,
+        attributes={"contact": "patient@example.com"}
+    )
+    with pytest.raises(SecurityException):
+        SystemSupervisor(model_provider="mock").process_task(payload)
