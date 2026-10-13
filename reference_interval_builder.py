@@ -16,7 +16,6 @@ from __future__ import annotations
 import argparse
 import csv
 import math
-import os
 import sys
 from collections import defaultdict
 from io import StringIO
@@ -33,10 +32,9 @@ from refint.core import (
 
 
 def _safe_resolve_path(path_str: str) -> Path:
-    """Resolve a user-supplied path safely, preventing directory traversal.
+    """Reject traversal syntax, symlinks, and non-regular input paths.
 
-    Rejects paths that escape the current working directory or that point
-    to non-regular files (symlinks to anywhere, devices, etc.).
+    Explicit absolute regular-file paths remain supported.
     """
     original = Path(path_str)
     if original.is_symlink():
